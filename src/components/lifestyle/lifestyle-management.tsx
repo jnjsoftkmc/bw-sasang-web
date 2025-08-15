@@ -424,7 +424,7 @@ export default function LifestyleManagement() {
                             <div className="space-y-2 text-sm">
                               <p><strong>분류:</strong> {food.category}</p>
                               <p><strong>성미:</strong> {food.properties}</p>
-                              <p><strong>효능:</strong> {food.benefits?.join(', ') || food.effects?.join(', ') || '-'}</p>
+                              <p><strong>효능:</strong> {food.benefits?.join(', ') || '-'}</p>
                               {food.cautions && (
                                 <p className="text-red-600"><strong>주의:</strong> {food.cautions.join(', ')}</p>
                               )}

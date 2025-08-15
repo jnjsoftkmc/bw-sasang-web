@@ -20,14 +20,13 @@ import {
   AlertCircle
 } from "lucide-react"
 import { 
-  calculateConstitutionFromQuestionnaire,
-  calculateConstitutionFromBodyMeasurement,
-  calculateConstitutionFromFaceAnalysis,
-  integrateAssessmentResults,
-  AssessmentResult
-} from "@/lib/constitution-algorithm"
-import { qscciiQuestions } from "@/lib/data/qsccii-questions"
-import { getConstitutionName, getConstitutionColor, formatConfidenceScore, getConstitutionDescription } from "@/lib/utils"
+  calculateConstitution,
+  ConstitutionDiagnosis,
+  constitutionNames,
+  constitutionDescriptions,
+  getConstitutionColor,
+  getConfidenceMessage
+} from "@/lib/constitution-calculator"
 
 interface AssessmentResultsProps {
   patient: any
@@ -40,66 +39,23 @@ interface AssessmentResultsProps {
 }
 
 export default function AssessmentResults({ patient, assessmentData, onBack }: AssessmentResultsProps) {
-  const [results, setResults] = useState<{
-    questionnaire?: AssessmentResult
-    bodyMeasurement?: AssessmentResult
-    faceAnalysis?: AssessmentResult
-    integrated?: AssessmentResult
-  }>({})
+  const [diagnosis, setDiagnosis] = useState<ConstitutionDiagnosis | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const calculateResults = async () => {
       setLoading(true)
       
-      const newResults: typeof results = {}
-
-      // QSCCII 설문 결과 계산
+      // QSCCII 설문 결과만 계산 (현재는 설문만 완성됨)
       if (assessmentData.questionnaire?.responses) {
         try {
-          newResults.questionnaire = calculateConstitutionFromQuestionnaire(
-            assessmentData.questionnaire.responses,
-            qscciiQuestions
-          )
+          const result = calculateConstitution(assessmentData.questionnaire.responses)
+          setDiagnosis(result)
         } catch (error) {
           console.error('설문 분석 오류:', error)
         }
       }
 
-      // 신체 계측 결과 계산
-      if (assessmentData.bodyMeasurement) {
-        try {
-          newResults.bodyMeasurement = calculateConstitutionFromBodyMeasurement(assessmentData.bodyMeasurement)
-        } catch (error) {
-          console.error('신체계측 분석 오류:', error)
-        }
-      }
-
-      // 얼굴 분석 결과 계산
-      if (assessmentData.faceAnalysis && (
-        assessmentData.faceAnalysis.faceLength && 
-        assessmentData.faceAnalysis.faceWidth &&
-        assessmentData.faceAnalysis.foreheadWidth &&
-        assessmentData.faceAnalysis.cheekboneWidth &&
-        assessmentData.faceAnalysis.jawWidth
-      )) {
-        try {
-          newResults.faceAnalysis = calculateConstitutionFromFaceAnalysis(assessmentData.faceAnalysis)
-        } catch (error) {
-          console.error('얼굴분석 오류:', error)
-        }
-      }
-
-      // 통합 결과 계산
-      if (Object.keys(newResults).length > 0) {
-        try {
-          newResults.integrated = integrateAssessmentResults(newResults)
-        } catch (error) {
-          console.error('통합분석 오류:', error)
-        }
-      }
-
-      setResults(newResults)
       setLoading(false)
     }
 
@@ -124,8 +80,7 @@ export default function AssessmentResults({ patient, assessmentData, onBack }: A
     )
   }
 
-  const integratedResult = results.integrated
-  const hasMultipleMethods = Object.keys(results).filter(key => key !== 'integrated').length > 1
+  const confidenceInfo = diagnosis ? getConfidenceMessage(diagnosis.confidence) : null
 
   return (
     <div className="space-y-6">
@@ -157,23 +112,23 @@ export default function AssessmentResults({ patient, assessmentData, onBack }: A
       </div>
 
       {/* 종합 결과 */}
-      {integratedResult && (
+      {diagnosis && (
         <Card className="border-2 border-blue-200">
           <CardHeader className="bg-blue-50">
             <CardTitle className="flex items-center space-x-2 text-blue-800">
               <Brain className="h-6 w-6" />
-              <span>종합 진단 결과</span>
+              <span>QSCCII 진단 결과</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
               {/* 주 체질 */}
               <div>
-                <Badge className={`text-2xl p-4 ${getConstitutionColor(integratedResult.finalConstitution)}`}>
-                  {getConstitutionName(integratedResult.finalConstitution)}
+                <Badge className={`text-2xl p-4 ${getConstitutionColor(diagnosis.primaryConstitution)}`}>
+                  {constitutionNames[diagnosis.primaryConstitution]}
                 </Badge>
                 <p className="text-gray-600 mt-2 text-lg">
-                  {getConstitutionDescription(integratedResult.finalConstitution)}
+                  {constitutionDescriptions[diagnosis.primaryConstitution].characteristics}
                 </p>
               </div>
 
@@ -181,29 +136,42 @@ export default function AssessmentResults({ patient, assessmentData, onBack }: A
               <div className="flex items-center justify-center space-x-4">
                 <div className="text-center">
                   <div className="text-3xl font-bold text-blue-600">
-                    {formatConfidenceScore(integratedResult.confidenceScore)}
+                    {Math.round(diagnosis.confidence)}%
                   </div>
                   <p className="text-sm text-gray-600">진단 신뢰도</p>
                 </div>
-                <div className={`p-3 rounded-lg ${getConfidenceLevel(integratedResult.confidenceScore).bgColor}`}>
-                  <div className={`font-medium ${getConfidenceLevel(integratedResult.confidenceScore).color}`}>
-                    신뢰도: {getConfidenceLevel(integratedResult.confidenceScore).level}
+                {confidenceInfo && (
+                  <div className="p-3 rounded-lg bg-gray-50">
+                    <div className={`font-medium ${confidenceInfo.color}`}>
+                      {confidenceInfo.message}
+                    </div>
                   </div>
+                )}
+              </div>
+
+              {/* 완성도 */}
+              <div className="text-center">
+                <div className="text-lg font-semibold text-gray-700">
+                  설문 완성도: {Math.round(diagnosis.completeness)}%
                 </div>
+                <p className="text-sm text-gray-500">
+                  총 {diagnosis.totalResponses}개 문항 응답 완료
+                </p>
+                <Progress value={diagnosis.completeness} className="mt-2" />
               </div>
 
               {/* 체질별 점수 */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-                {Object.entries(integratedResult.scores).map(([constitution, score]) => (
-                  <div key={constitution} className="text-center">
+                {diagnosis.scores.map((score) => (
+                  <div key={score.constitution} className="text-center">
                     <div className="mb-2">
-                      <Badge className={getConstitutionColor(constitution)}>
-                        {getConstitutionName(constitution)}
+                      <Badge className={getConstitutionColor(score.constitution)}>
+                        {constitutionNames[score.constitution]}
                       </Badge>
                     </div>
                     <div className="space-y-2">
-                      <Progress value={score * 100} className="h-2" />
-                      <span className="text-sm font-medium">{Math.round(score * 100)}%</span>
+                      <Progress value={score.percentage} className="h-2" />
+                      <span className="text-sm font-medium">{Math.round(score.percentage)}%</span>
                     </div>
                   </div>
                 ))}
@@ -215,166 +183,102 @@ export default function AssessmentResults({ patient, assessmentData, onBack }: A
 
       {/* 상세 결과 탭 */}
       <Tabs defaultValue="detailed" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="detailed">상세 분석</TabsTrigger>
-          <TabsTrigger value="questionnaire" disabled={!results.questionnaire}>
+          <TabsTrigger value="questionnaire" disabled={!diagnosis}>
             <FileText className="h-4 w-4 mr-2" />
             설문 결과
           </TabsTrigger>
-          <TabsTrigger value="body" disabled={!results.bodyMeasurement}>
-            <Ruler className="h-4 w-4 mr-2" />
-            신체 계측
-          </TabsTrigger>
-          <TabsTrigger value="face" disabled={!results.faceAnalysis}>
-            <Scan className="h-4 w-4 mr-2" />
-            얼굴 분석
+          <TabsTrigger value="recommendations" disabled={!diagnosis}>
+            <TrendingUp className="h-4 w-4 mr-2" />
+            건강 관리법
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="detailed" className="space-y-6">
-          {/* 진단 방법별 결과 비교 */}
-          <Card>
-            <CardHeader>
-              <CardTitle>진단 방법별 결과 비교</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {results.questionnaire && (
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <FileText className="h-5 w-5 text-blue-600" />
-                      <div>
-                        <p className="font-medium">QSCCII 설문지</p>
-                        <p className="text-sm text-gray-600">
-                          신뢰도: {formatConfidenceScore(results.questionnaire.confidenceScore)}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge className={getConstitutionColor(results.questionnaire.finalConstitution)}>
-                      {getConstitutionName(results.questionnaire.finalConstitution)}
-                    </Badge>
-                  </div>
-                )}
-
-                {results.bodyMeasurement && (
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <Ruler className="h-5 w-5 text-green-600" />
-                      <div>
-                        <p className="font-medium">신체 계측</p>
-                        <p className="text-sm text-gray-600">
-                          신뢰도: {formatConfidenceScore(results.bodyMeasurement.confidenceScore)}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge className={getConstitutionColor(results.bodyMeasurement.finalConstitution)}>
-                      {getConstitutionName(results.bodyMeasurement.finalConstitution)}
-                    </Badge>
-                  </div>
-                )}
-
-                {results.faceAnalysis && (
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <Scan className="h-5 w-5 text-purple-600" />
-                      <div>
-                        <p className="font-medium">얼굴 분석</p>
-                        <p className="text-sm text-gray-600">
-                          신뢰도: {formatConfidenceScore(results.faceAnalysis.confidenceScore)}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge className={getConstitutionColor(results.faceAnalysis.finalConstitution)}>
-                      {getConstitutionName(results.faceAnalysis.finalConstitution)}
-                    </Badge>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 체질별 특성 및 건강 관리법 */}
-          {integratedResult && (
+          {/* 카테고리별 세부 점수 */}
+          {diagnosis && (
             <Card>
               <CardHeader>
-                <CardTitle>{getConstitutionName(integratedResult.finalConstitution)} 특성 및 관리법</CardTitle>
+                <CardTitle>카테고리별 체질 분석</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="font-semibold mb-3 text-green-700">권장사항</h4>
-                    <ul className="space-y-2 text-sm">
-                      {integratedResult.finalConstitution === 'taeyang' && (
-                        <>
-                          <li>• 새콤하고 시원한 음식 (포도, 복숭아 등)</li>
-                          <li>• 가벼운 유산소 운동</li>
-                          <li>• 충분한 수분 섭취</li>
-                          <li>• 스트레스 관리</li>
-                        </>
-                      )}
-                      {integratedResult.finalConstitution === 'soyang' && (
-                        <>
-                          <li>• 시원하고 담백한 음식 (해산물, 채소 등)</li>
-                          <li>• 적당한 운동과 충분한 휴식</li>
-                          <li>• 찬 음식과 차가운 물 섭취</li>
-                          <li>• 감정 조절과 마음의 평온</li>
-                        </>
-                      )}
-                      {integratedResult.finalConstitution === 'taeeum' && (
-                        <>
-                          <li>• 따뜻하고 기름기 있는 음식 (소고기, 견과류 등)</li>
-                          <li>• 활발한 운동과 땀 배출</li>
-                          <li>• 규칙적인 생활 패턴</li>
-                          <li>• 체중 관리와 금연</li>
-                        </>
-                      )}
-                      {integratedResult.finalConstitution === 'soeum' && (
-                        <>
-                          <li>• 따뜻하고 소화가 잘되는 음식 (닭고기, 따뜻한 차 등)</li>
-                          <li>• 가벼운 운동과 충분한 휴식</li>
-                          <li>• 따뜻한 음식과 실온 물 섭취</li>
-                          <li>• 소화기 건강 관리</li>
-                        </>
-                      )}
-                    </ul>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-3 text-red-700">주의사항</h4>
-                    <ul className="space-y-2 text-sm">
-                      {integratedResult.finalConstitution === 'taeyang' && (
-                        <>
-                          <li>• 맵고 자극적인 음식 피하기</li>
-                          <li>• 과도한 운동 금지</li>
-                          <li>• 과식 주의</li>
-                          <li>• 과로와 스트레스 피하기</li>
-                        </>
-                      )}
-                      {integratedResult.finalConstitution === 'soyang' && (
-                        <>
-                          <li>• 뜨거운 음식과 자극적인 음식 피하기</li>
-                          <li>• 과도한 운동과 사우나 피하기</li>
-                          <li>• 흥분과 스트레스 피하기</li>
-                          <li>• 과음과 늦은 잠자리 피하기</li>
-                        </>
-                      )}
-                      {integratedResult.finalConstitution === 'taeeum' && (
-                        <>
-                          <li>• 찬 음식과 생식 피하기</li>
-                          <li>• 과식과 폭식 주의</li>
-                          <li>• 운동 부족 주의</li>
-                          <li>• 게으름과 우울감 주의</li>
-                        </>
-                      )}
-                      {integratedResult.finalConstitution === 'soeum' && (
-                        <>
-                          <li>• 찬 음식과 생과일 과다 섭취 피하기</li>
-                          <li>• 과로와 무리한 운동 피하기</li>
-                          <li>• 스트레스와 과로 피하기</li>
-                          <li>• 소화불량 유발 음식 주의</li>
-                        </>
-                      )}
-                    </ul>
-                  </div>
+                <div className="space-y-6">
+                  {diagnosis.scores[0] && (
+                    <>
+                      <div>
+                        <h4 className="font-semibold mb-4 flex items-center">
+                          <User className="h-5 w-5 mr-2" />
+                          체형 분석
+                        </h4>
+                        <div className="grid grid-cols-4 gap-4">
+                          {Object.entries(diagnosis.scores[0].categoryScores.body || {}).map(([constitution, score]) => (
+                            <div key={constitution} className="text-center">
+                              <Badge variant="outline" className="mb-2">
+                                {constitutionNames[constitution as keyof typeof constitutionNames]}
+                              </Badge>
+                              <Progress value={(score / 3) * 100} className="h-2 mb-1" />
+                              <span className="text-xs text-gray-600">{score.toFixed(1)}/3.0</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-semibold mb-4 flex items-center">
+                          <Brain className="h-5 w-5 mr-2" />
+                          성격 분석
+                        </h4>
+                        <div className="grid grid-cols-4 gap-4">
+                          {Object.entries(diagnosis.scores[0].categoryScores.personality || {}).map(([constitution, score]) => (
+                            <div key={constitution} className="text-center">
+                              <Badge variant="outline" className="mb-2">
+                                {constitutionNames[constitution as keyof typeof constitutionNames]}
+                              </Badge>
+                              <Progress value={(score / 3) * 100} className="h-2 mb-1" />
+                              <span className="text-xs text-gray-600">{score.toFixed(1)}/3.0</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-semibold mb-4 flex items-center">
+                          <CheckCircle className="h-5 w-5 mr-2" />
+                          증상 분석
+                        </h4>
+                        <div className="grid grid-cols-4 gap-4">
+                          {Object.entries(diagnosis.scores[0].categoryScores.symptoms || {}).map(([constitution, score]) => (
+                            <div key={constitution} className="text-center">
+                              <Badge variant="outline" className="mb-2">
+                                {constitutionNames[constitution as keyof typeof constitutionNames]}
+                              </Badge>
+                              <Progress value={(score / 3) * 100} className="h-2 mb-1" />
+                              <span className="text-xs text-gray-600">{score.toFixed(1)}/3.0</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-semibold mb-4 flex items-center">
+                          <TrendingUp className="h-5 w-5 mr-2" />
+                          선호도 분석
+                        </h4>
+                        <div className="grid grid-cols-4 gap-4">
+                          {Object.entries(diagnosis.scores[0].categoryScores.preferences || {}).map(([constitution, score]) => (
+                            <div key={constitution} className="text-center">
+                              <Badge variant="outline" className="mb-2">
+                                {constitutionNames[constitution as keyof typeof constitutionNames]}
+                              </Badge>
+                              <Progress value={(score / 3) * 100} className="h-2 mb-1" />
+                              <span className="text-xs text-gray-600">{score.toFixed(1)}/3.0</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -399,9 +303,8 @@ export default function AssessmentResults({ patient, assessmentData, onBack }: A
           </Card>
         </TabsContent>
 
-        {/* 개별 결과 탭들 */}
         <TabsContent value="questionnaire">
-          {results.questionnaire && (
+          {diagnosis && (
             <Card>
               <CardHeader>
                 <CardTitle>QSCCII 설문지 분석 결과</CardTitle>
@@ -409,84 +312,51 @@ export default function AssessmentResults({ patient, assessmentData, onBack }: A
               <CardContent>
                 <div className="space-y-6">
                   <div className="text-center">
-                    <Badge className={`text-xl p-3 ${getConstitutionColor(results.questionnaire.finalConstitution)}`}>
-                      {getConstitutionName(results.questionnaire.finalConstitution)}
+                    <Badge className={`text-xl p-3 ${getConstitutionColor(diagnosis.primaryConstitution)}`}>
+                      {constitutionNames[diagnosis.primaryConstitution]}
                     </Badge>
                     <p className="text-lg mt-2">
-                      신뢰도: {formatConfidenceScore(results.questionnaire.confidenceScore)}
+                      신뢰도: {Math.round(diagnosis.confidence)}%
                     </p>
                   </div>
                   
-                  {/* 카테고리별 점수 */}
+                  {/* 체질별 점수 상세 */}
                   <div>
-                    <h4 className="font-semibold mb-4">카테고리별 분석</h4>
-                    <div className="space-y-4">
-                      {Object.entries(results.questionnaire.categoryScores).map(([category, scores]) => {
-                        const categoryNames = {
-                          body: '체형',
-                          personality: '성격',
-                          symptoms: '증상',
-                          preferences: '선호도'
-                        }
-                        return (
-                          <div key={category}>
-                            <h5 className="font-medium mb-2">{categoryNames[category as keyof typeof categoryNames]}</h5>
-                            <div className="grid grid-cols-4 gap-2">
-                              {Object.entries(scores).map(([constitution, score]) => (
-                                <div key={constitution} className="text-center">
-                                  <Badge variant="outline" className="text-xs mb-1">
-                                    {getConstitutionName(constitution)}
-                                  </Badge>
-                                  <Progress value={score * 100} className="h-2" />
-                                  <span className="text-xs">{Math.round(score * 100)}%</span>
-                                </div>
-                              ))}
-                            </div>
+                    <h4 className="font-semibold mb-4">체질별 종합 점수</h4>
+                    <div className="space-y-3">
+                      {diagnosis.scores.map((score, index) => (
+                        <div key={score.constitution} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center space-x-3">
+                            <span className="text-lg font-bold text-gray-600">{index + 1}</span>
+                            <Badge className={getConstitutionColor(score.constitution)}>
+                              {constitutionNames[score.constitution]}
+                            </Badge>
                           </div>
-                        )
-                      })}
+                          <div className="flex items-center space-x-3">
+                            <Progress value={score.percentage} className="w-24 h-2" />
+                            <span className="font-medium text-right min-w-[3rem]">
+                              {Math.round(score.percentage)}%
+                            </span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
 
-        <TabsContent value="body">
-          {results.bodyMeasurement && (
-            <Card>
-              <CardHeader>
-                <CardTitle>신체 계측 분석 결과</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center mb-6">
-                  <Badge className={`text-xl p-3 ${getConstitutionColor(results.bodyMeasurement.finalConstitution)}`}>
-                    {getConstitutionName(results.bodyMeasurement.finalConstitution)}
-                  </Badge>
-                  <p className="text-lg mt-2">
-                    신뢰도: {formatConfidenceScore(results.bodyMeasurement.confidenceScore)}
-                  </p>
-                </div>
-                
-                {/* 신체 데이터 표시 */}
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {assessmentData.bodyMeasurement.height && (
-                    <div className="text-center p-3 bg-gray-50 rounded">
-                      <p className="text-sm text-gray-600">키</p>
-                      <p className="text-lg font-semibold">{assessmentData.bodyMeasurement.height}cm</p>
-                    </div>
-                  )}
-                  {assessmentData.bodyMeasurement.weight && (
-                    <div className="text-center p-3 bg-gray-50 rounded">
-                      <p className="text-sm text-gray-600">체중</p>
-                      <p className="text-lg font-semibold">{assessmentData.bodyMeasurement.weight}kg</p>
-                    </div>
-                  )}
-                  {assessmentData.bodyMeasurement.bmi && (
-                    <div className="text-center p-3 bg-gray-50 rounded">
-                      <p className="text-sm text-gray-600">BMI</p>
-                      <p className="text-lg font-semibold">{assessmentData.bodyMeasurement.bmi}</p>
+                  {/* 추천사항 */}
+                  {diagnosis.recommendations.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold mb-4">진단 기반 추천사항</h4>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <ul className="space-y-2">
+                          {diagnosis.recommendations.map((recommendation, index) => (
+                            <li key={index} className="text-sm text-blue-800 flex items-start">
+                              <span className="mr-2">•</span>
+                              <span>{recommendation}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -495,42 +365,130 @@ export default function AssessmentResults({ patient, assessmentData, onBack }: A
           )}
         </TabsContent>
 
-        <TabsContent value="face">
-          {results.faceAnalysis && (
+        <TabsContent value="recommendations">
+          {diagnosis && (
             <Card>
               <CardHeader>
-                <CardTitle>얼굴 분석 결과</CardTitle>
+                <CardTitle>
+                  {constitutionNames[diagnosis.primaryConstitution]} 맞춤 건강 관리법
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-center mb-6">
-                  <Badge className={`text-xl p-3 ${getConstitutionColor(results.faceAnalysis.finalConstitution)}`}>
-                    {getConstitutionName(results.faceAnalysis.finalConstitution)}
-                  </Badge>
-                  <p className="text-lg mt-2">
-                    신뢰도: {formatConfidenceScore(results.faceAnalysis.confidenceScore)}
-                  </p>
-                </div>
-                
-                {/* 얼굴 측정 데이터 */}
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {assessmentData.faceAnalysis.faceLength && (
-                    <div className="text-center p-3 bg-gray-50 rounded">
-                      <p className="text-sm text-gray-600">얼굴 길이</p>
-                      <p className="text-lg font-semibold">{assessmentData.faceAnalysis.faceLength}mm</p>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* 체질별 특성 */}
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-lg text-blue-700">체질 특성</h4>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-blue-800">
+                          {constitutionDescriptions[diagnosis.primaryConstitution].characteristics}
+                        </p>
+                        <p className="text-sm text-blue-600 mt-2">
+                          성격: {constitutionDescriptions[diagnosis.primaryConstitution].personality}
+                        </p>
+                      </div>
                     </div>
-                  )}
-                  {assessmentData.faceAnalysis.faceWidth && (
-                    <div className="text-center p-3 bg-gray-50 rounded">
-                      <p className="text-sm text-gray-600">얼굴 너비</p>
-                      <p className="text-lg font-semibold">{assessmentData.faceAnalysis.faceWidth}mm</p>
+
+                    {/* 건강 관리 포인트 */}
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-lg text-green-700">건강 관리 포인트</h4>
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <p className="text-green-800 text-sm">
+                          {constitutionDescriptions[diagnosis.primaryConstitution].health}
+                        </p>
+                      </div>
                     </div>
-                  )}
-                  {assessmentData.faceAnalysis.foreheadWidth && (
-                    <div className="text-center p-3 bg-gray-50 rounded">
-                      <p className="text-sm text-gray-600">이마 너비</p>
-                      <p className="text-lg font-semibold">{assessmentData.faceAnalysis.foreheadWidth}mm</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* 식이 요법 */}
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-lg text-purple-700">권장 식단</h4>
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <p className="text-purple-800 text-sm">
+                          {constitutionDescriptions[diagnosis.primaryConstitution].diet}
+                        </p>
+                      </div>
                     </div>
-                  )}
+
+                    {/* 생활 습관 */}
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-lg text-orange-700">생활 습관</h4>
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                        <ul className="text-sm text-orange-800 space-y-1">
+                          {diagnosis.primaryConstitution === 'taeyang' && (
+                            <>
+                              <li>• 규칙적인 생활 패턴 유지</li>
+                              <li>• 적절한 휴식과 수면</li>
+                              <li>• 스트레스 관리</li>
+                              <li>• 과로 피하기</li>
+                            </>
+                          )}
+                          {diagnosis.primaryConstitution === 'soyang' && (
+                            <>
+                              <li>• 충분한 수분 섭취</li>
+                              <li>• 감정 조절 훈련</li>
+                              <li>• 규칙적인 운동</li>
+                              <li>• 과도한 흥분 피하기</li>
+                            </>
+                          )}
+                          {diagnosis.primaryConstitution === 'taeeum' && (
+                            <>
+                              <li>• 꾸준한 운동과 활동</li>
+                              <li>• 체중 관리</li>
+                              <li>• 규칙적인 식사</li>
+                              <li>• 목표 설정과 실행</li>
+                            </>
+                          )}
+                          {diagnosis.primaryConstitution === 'soeum' && (
+                            <>
+                              <li>• 충분한 휴식과 수면</li>
+                              <li>• 소화기 건강 관리</li>
+                              <li>• 따뜻한 환경 유지</li>
+                              <li>• 무리한 활동 피하기</li>
+                            </>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 주의사항 */}
+                  <div>
+                    <h4 className="font-semibold text-lg text-red-700 mb-4">주의사항</h4>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <ul className="text-sm text-red-800 space-y-1">
+                        {diagnosis.primaryConstitution === 'taeyang' && (
+                          <>
+                            <li>• 과도한 운동이나 활동 피하기</li>
+                            <li>• 자극적이고 뜨거운 음식 주의</li>
+                            <li>• 감정 조절에 신경쓰기</li>
+                          </>
+                        )}
+                        {diagnosis.primaryConstitution === 'soyang' && (
+                          <>
+                            <li>• 뜨겁고 매운 음식 피하기</li>
+                            <li>• 과로와 스트레스 주의</li>
+                            <li>• 과음과 흡연 금지</li>
+                          </>
+                        )}
+                        {diagnosis.primaryConstitution === 'taeeum' && (
+                          <>
+                            <li>• 차가운 음식과 과식 피하기</li>
+                            <li>• 운동 부족 주의</li>
+                            <li>• 소극적인 생활 태도 개선</li>
+                          </>
+                        )}
+                        {diagnosis.primaryConstitution === 'soeum' && (
+                          <>
+                            <li>• 찬 음식과 생것 피하기</li>
+                            <li>• 과로와 무리 피하기</li>
+                            <li>• 소화불량 유발 음식 주의</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -32,18 +32,35 @@ export default function QSCCIIQuestionnaire({ onComplete, completed }: QSCCIIQue
   const progressPercentage = (currentQuestionIndex / totalQuestions) * 100
   const isLastQuestion = currentQuestionIndex === totalQuestions - 1
 
+  console.log('Component state:', {
+    currentQuestionIndex,
+    totalQuestions,
+    currentQuestion: currentQuestion ? { id: currentQuestion.id, question: currentQuestion.question } : null,
+    responses,
+    answeredQuestions
+  })
+
   const handleResponse = (questionId: number, response: number) => {
-    setResponses(prev => ({
-      ...prev,
-      [questionId]: response
-    }))
+    console.log('handleResponse called:', { questionId, response })
+    setResponses(prev => {
+      const newResponses = {
+        ...prev,
+        [questionId]: response
+      }
+      console.log('Updated responses:', newResponses)
+      return newResponses
+    })
   }
 
   const handleNext = () => {
+    console.log('handleNext called:', { currentQuestionIndex, isLastQuestion, currentResponse: responses[currentQuestion.id] })
     if (isLastQuestion) {
       setShowSummary(true)
     } else {
-      setCurrentQuestionIndex(prev => prev + 1)
+      setCurrentQuestionIndex(prev => {
+        console.log('Moving from question', prev, 'to question', prev + 1)
+        return prev + 1
+      })
     }
   }
 
@@ -231,8 +248,11 @@ export default function QSCCIIQuestionnaire({ onComplete, completed }: QSCCIIQue
         </CardHeader>
         <CardContent className="space-y-4">
           <RadioGroup
-            value={responses[currentQuestion.id]?.toString()}
-            onValueChange={(value) => handleResponse(currentQuestion.id, parseInt(value))}
+            value={responses[currentQuestion.id]?.toString() || ""}
+            onValueChange={(value) => {
+              console.log('RadioGroup onValueChange:', { value, questionId: currentQuestion.id })
+              handleResponse(currentQuestion.id, parseInt(value))
+            }}
           >
             {currentQuestion.options.map((option) => (
               <div key={option.value} className="flex items-center space-x-2">
@@ -263,7 +283,8 @@ export default function QSCCIIQuestionnaire({ onComplete, completed }: QSCCIIQue
             
             <Button
               onClick={handleNext}
-              disabled={!responses[currentQuestion.id]}
+              disabled={false}
+              className={!responses[currentQuestion.id] ? "bg-gray-300" : ""}
             >
               {isLastQuestion ? (
                 <>
@@ -284,6 +305,10 @@ export default function QSCCIIQuestionnaire({ onComplete, completed }: QSCCIIQue
             <p className="text-sm text-gray-500">
               총 응답: {answeredQuestions}/{totalQuestions} 
               ({Math.round((answeredQuestions / totalQuestions) * 100)}%)
+            </p>
+            <p className="text-xs text-red-500 mt-1">
+              DEBUG: 현재 질문 ID: {currentQuestion.id}, 현재 응답: {responses[currentQuestion.id] || 'None'}, 
+              버튼 disabled: {!responses[currentQuestion.id] ? 'Yes' : 'No'}
             </p>
           </div>
         </CardContent>

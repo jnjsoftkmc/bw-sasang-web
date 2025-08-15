@@ -13,10 +13,21 @@ import {
   FileText, 
   BarChart3,
   Menu,
-  X
+  X,
+  LogOut,
+  User,
+  ChevronDown
 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/lib/auth-context"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 const navigation = [
   { name: "대시보드", href: "/dashboard", icon: BarChart3 },
@@ -30,6 +41,11 @@ const navigation = [
 export default function Navbar() {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { user, logout } = useAuth()
+
+  const handleLogout = async () => {
+    await logout()
+  }
 
   return (
     <header className="bg-white border-b shadow-sm sticky top-0 z-50">
@@ -65,12 +81,42 @@ export default function Navbar() {
             })}
           </nav>
 
-          {/* 체질 배지 */}
-          <div className="hidden lg:flex items-center space-x-2">
-            <Badge variant="secondary" className="constitution-badge taeyang text-xs">태양인</Badge>
-            <Badge variant="secondary" className="constitution-badge soyang text-xs">소양인</Badge>
-            <Badge variant="secondary" className="constitution-badge taeeum text-xs">태음인</Badge>
-            <Badge variant="secondary" className="constitution-badge soeum text-xs">소음인</Badge>
+          {/* 사용자 메뉴 */}
+          <div className="hidden md:flex items-center space-x-4">
+            {/* 체질 배지 */}
+            <div className="hidden lg:flex items-center space-x-2">
+              <Badge variant="secondary" className="constitution-badge taeyang text-xs">태양인</Badge>
+              <Badge variant="secondary" className="constitution-badge soyang text-xs">소양인</Badge>
+              <Badge variant="secondary" className="constitution-badge taeeum text-xs">태음인</Badge>
+              <Badge variant="secondary" className="constitution-badge soeum text-xs">소음인</Badge>
+            </div>
+
+            {/* 사용자 드롭다운 */}
+            {user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center space-x-2">
+                    <User className="h-4 w-4" />
+                    <span className="text-sm font-medium">{user.name}</span>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="px-3 py-2">
+                    <p className="text-sm font-medium">{user.name}</p>
+                    <p className="text-xs text-gray-500">{user.email}</p>
+                    {user.clinic && (
+                      <p className="text-xs text-gray-500">{user.clinic}</p>
+                    )}
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                    <LogOut className="h-4 w-4 mr-2" />
+                    로그아웃
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
 
           {/* 모바일 메뉴 버튼 */}
@@ -114,6 +160,33 @@ export default function Navbar() {
               })}
             </nav>
             <div className="border-t pt-4 pb-4">
+              {/* 사용자 정보 */}
+              {user && (
+                <div className="px-4 mb-4">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="bg-blue-100 p-2 rounded-full">
+                      <User className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{user.name}</p>
+                      <p className="text-xs text-gray-500">{user.email}</p>
+                      {user.clinic && (
+                        <p className="text-xs text-gray-500">{user.clinic}</p>
+                      )}
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleLogout}
+                    className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                  >
+                    <LogOut className="h-4 w-4 mr-2" />
+                    로그아웃
+                  </Button>
+                </div>
+              )}
+              
               <div className="px-4">
                 <p className="text-sm text-gray-500 mb-2">사상체질</p>
                 <div className="flex flex-wrap gap-2">
